@@ -2,87 +2,115 @@ INCLUDE Irvine32.inc
 INCLUDE macros.inc
 
 .data
-    WORDCNT=20
-    WORDBUF=20
+    WORDCNT=200
+    WORDBUF=30
+    MAX_SELECTED=100
 
-    file_name BYTE "input.txt", 0
+    file_name BYTE "input.txt",0
     file_buffer BYTE WORDCNT * WORDBUF DUP(0)
     buffer BYTE WORDCNT DUP(WORDBUF DUP(0))
-    bufsiz DWORD WORDCNT * WORDBUF
+    max_bufsiz DWORD WORDCNT * WORDBUF
+    buffer_size DWORD ?
+    selected BYTE MAX_SELECTED DUP(WORDBUF DUP(0))
 .code
 
-; PRINTS BUFFER ELEMENTS
-PrintBuffer PROC USES esi eax
-    mov eax, 0
-    mov esi, 0
 
+; PRINTS BUFFER ELEMENTS
+PrintBuffer PROC USES esi edi ecx
+    mov ecx, buffer_size
+    mov esi, OFFSET buffer
 print_loop:
+    push ecx
+
+    mov ecx, WORDBUF
     mov edi, esi
 print_word:
-    mov al, buffer[edi]
-    cmp al, 0
-    je go_next
+    mov al, BYTE PTR [edi]
     call WriteChar
     inc edi
-    jmp print_word
+    loop print_word
 
-go_next:
-    add esi, 20
-    mov eax, 32
-    call WriteChar
-    cmp esi, bufsiz
-    jne print_loop
+    pop ecx
+    call CRLF
+    add esi, WORDBUF
+    loop print_loop
 
     ret
 PrintBuffer ENDP
 
-; PARSES THE STRING READ FROM THE FILE AND TRANSFERS IT TO THE BUFFER: RETURNS word_count (always assumes at least 1 word exists)
-ParseFileInput PROC USES esi edi ecx
-    LOCAL word_count:DWORD
 
-    mov word_count, 1
+; DEBUG PURPOSES
+PrintFileBuffer PROC
+    mov ecx, max_bufsiz
+    mov esi, 0
+
+print:
+    movzx eax, file_buffer[esi]
+    call WriteHex
+    push eax
+    mov eax, 32
+    call WriteChar
+    pop eax
+    call WriteChar
+    call CRLF
+    inc esi
+    loop print
+
+    ret
+PrintFileBuffer ENDP
+
+
+; PARSES THE STRING READ FROM THE FILE AND TRANSFERS IT TO THE BUFFER: RETURNS # OF ELEMENTS IN ecx
+ParseInputData PROC USES esi edi eax ecx
+    LOCAL count:DWORD
+
+    mov count, 0
     mov esi, OFFSET file_buffer
     mov edi, OFFSET buffer
     mov ecx, 0
 
-read_loop:
-    cmp word_count, WORDCNT
-    jge end_parse
-
+parse_loop:
     mov al, BYTE PTR [esi]
-    cmp al, 0
-    je end_parse
-
-    cmp al, 0dh
-    jne go_next
-
-    inc word_count
-    inc esi
-    neg ecx
-    add ecx, 20
-pad_word:
-    mov al, 0
-    mov BYTE PTR [edi], al
-    inc edi
-    loop pad_word
-
-    inc esi
-    jmp read_loop
-go_next:
-    mov BYTE PTR [edi], al
-    inc esi
-    inc edi
     inc ecx
-    jmp read_loop
+    cmp al, 0
+    je finish
 
-end_parse:
-    mov eax, word_count
+    cmp al, 0Dh ; newline found
+    je next_word
+
+    cmp ecx, WORDBUF
+    je max_buf_limit ; skip moving into source if max buffer size reached
+    movzx eax, BYTE PTR [esi]
+    mov BYTE PTR [edi], al
+    inc edi
+max_buf_limit:
+    inc esi
+    jmp parse_loop
+next_word:
+    add esi, 2 ; adjust esi to next word
+    dec ecx    ; decrement count to remove newline
+
+    ; find total offset needed to be added into edi to move to next index in buffer
+    mov ebx, ecx
+    sub ebx, WORDBUF
+    neg ebx
+
+    add edi, ebx
+    mov ecx, 0
+    inc count
+
+    jmp parse_loop
+    
+finish:
+    mov ecx, count
+    inc ecx
+    mov buffer_size, ecx
     ret
-ParseFileInput ENDP
+ParseInputData ENDP
 
 
-; READS FROM FILE AND PARSES IT
-ReadInputFile PROC USES eax edx ecx
+; READS FROM FILE INTO file_buffer
+ReadInputData PROC USES eax edx ecx
     LOCAL file_handle:HANDLE
 
     lea edx, file_name
@@ -96,93 +124,110 @@ ReadInputFile PROC USES eax edx ecx
 file_ok:
 
     lea edx, file_buffer
-    mov ecx, bufsiz
+    mov ecx, max_bufsiz
     call ReadFromFile
     jnc check_read
     mWrite "Cannot read from file"
-    jmp close_file
+    jmp file_fail
 
 check_read:
     cmp eax, 0
     jne check_buffer
     mWrite "Nothing in file"
-    jmp close_file
+    jmp file_fail
 
 check_buffer:
-	cmp	eax, bufsiz
+	cmp	eax, max_bufsiz
 	jb	buf_size_ok
 	mWrite "File size greater than buffer"
-	jmp	close_file
+	jmp	file_fail
 buf_size_ok:
 
     mov eax, file_handle
     call CloseFile
     jmp terminate
 
-close_file:
+file_fail:
     mov eax, file_handle
     call CloseFile
     jmp quit
 terminate:
     ret
-ReadInputFile ENDP
+ReadInputData ENDP
 
 
-; SELECTS RANDOM WORD INDEX FROM RANGE OF WORDS AVAILABLE: TAKES IN ARGUMENTS eax AND RETURNS INDEX IN eax TOO
-SelectRandomWord PROC USES eax ebx
-    call Randomize
-    call RandomRange
+; WRITES WORD FROM buffer BASED ON INDEX GIVEN IN eax INTO selected BASED ON INDEX GIVEN IN ebx
+WriteWordFromIndex PROC USES eax ebx ecx esi
+    mov ecx, WORDBUF
+    mov esi, OFFSET buffer
+    mul ecx
+    add esi, eax
 
-    mov ebx, WORDBUF
-    imul ebx
-
-    ret
-SelectRandomWord ENDP
-
-
-; TAKES INDEX OF WORD AS PARAMETER IN EAX AND PRINTS THE WORD
-WriteWord PROC USES eax esi
-    mov esi, eax
-write_loop:
-    mov al, buffer[esi]
-    cmp al, 0
-    je finish
-    call WriteChar
-    inc esi
-    jmp write_loop
-
-finish:
-    ret
-WriteWord ENDP
-
-
-; GENERATES SEQUENCE OF WORD COUNT STORED IN ecx. ALSO TAKES IN WORD COUNT IN eax
-GenerateRandomWords PROC USES eax ecx
-write_loop:
-    call SelectRandomWord
-    call WriteWord
+    mov edi, OFFSET selected
     push eax
-    mov eax, 32
-    call WriteChar
+    mov eax, ebx
+    mul ecx
+    mov ebx, eax
     pop eax
-    loop write_loop
+    add edi, ebx
+
+    rep movsb
+    
+    ret
+WriteWordFromIndex ENDP
+
+
+; GENERATES RANDOM INDEX: RETURNS RESULT IN eax
+SelectRandomIndex PROC
+    mov eax, buffer_size
+    call RandomRange
+    ret
+SelectRandomIndex ENDP
+
+
+; GENERATES A SEQUENCE OF N WORDS WHERE N IS GIVEN IN ecx
+GenerateRandomWords PROC USES eax ebx ecx
+    mov ebx, 0
+gen_loop:
+    call SelectRandomIndex
+    call WriteWordFromIndex
+    inc ebx
+    loop gen_loop
 
     ret
 GenerateRandomWords ENDP
 
+
+; PRINT N SELECTED WORDS WHERE N IS IN ecx
+PrintSelectedWords PROC USES eax
+    mov esi, OFFSET selected
+print_loop:
+    mov edx, esi
+    call WriteString
+    mov eax, 32
+    call WriteChar
+    add esi, WORDBUF
+    loop print_loop
+
+    ret
+PrintSelectedWords ENDP
+
+
 main PROC
-    LOCAL word_count:DWORD
+    call Randomize
+    call ReadInputData
+    call ParseInputData
 
-    call ReadInputFile
-    call ParseFileInput
-    mov word_count, eax
-
-    mov ecx, 10
-    mov eax, word_count
+    mov ecx, 50
     call GenerateRandomWords
+    call PrintSelectedWords
+
+    ; take user input 50 times
+    ; for each input compare string with selected
+    ; if correct then count else leave
+    ; after every word, reset cursor to start again (also clear line)
 
 quit::
     exit
 main ENDP
 END main
-
