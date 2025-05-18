@@ -97,4 +97,32 @@ main PROC
 main ENDP
 END main
 ```
+#### this works apparently...
+```asm
+INCLUDE Irvine32.inc
+INCLUDE macros.inc
+
+.data
+    arr1 DWORD 1, 2, 3, 4, 5
+    yes DWORD 6
+    arr2 DWORD 1, 2, 3, 4, 5, 6
+.code
+
+main PROC
+    mov esi, OFFSET arr1
+    mov edi, OFFSET arr2
+
+    mov ecx, LENGTHOF arr2
+
+    repe cmpsd
+    je same
+    mWrite "not same"
+    jmp _ex
+same:
+    mWrite "same"
+_ex:
+    exit
+main ENDP
+END main
+```
 
