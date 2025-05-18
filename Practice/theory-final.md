@@ -57,3 +57,44 @@ main PROC
 main ENDP
 END main
 ```
+#### using movsd and rep to shift array left by one. deleting the first entry
+```asm
+INCLUDE Irvine32.inc
+INCLUDE macros.inc
+
+.data
+    arr DWORD 1, 2, 3, 4, 5
+.code
+
+PrintArr PROC, _s_data:DWORD, _s_size:DWORD, _s_type:DWORD
+    pushad
+    
+    mov esi, _s_data
+    mov ecx, _s_size
+    mov ebx, _s_type
+l1:
+    mov eax, [esi]
+    call WriteHex
+    mov eax, 32
+    call WriteChar
+    add esi, TYPE arr
+    loop l1
+
+    popad
+    ret
+PrintArr ENDP
+
+main PROC
+    mov ecx, LENGTHOF arr - 1
+    mov esi, OFFSET arr + TYPE arr
+    mov edi, OFFSET arr
+
+    rep movsd
+
+    INVOKE PrintArr, ADDR arr, LENGTHOF arr, TYPE arr
+
+    exit
+main ENDP
+END main
+```
+
