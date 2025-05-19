@@ -125,4 +125,38 @@ _ex:
 main ENDP
 END main
 ```
+#### arbitrary shift a huge number
+```asm
+INCLUDE Irvine32.inc
 
+.data
+    bignum DWORD 7h, 1h, 0h
+.code
+
+printNum PROC
+    mov esi, OFFSET bignum
+    mov ecx, LENGTHOF bignum
+l1:
+    lodsd
+    call WriteBin
+    call CRLF
+    loop l1
+
+    ret
+printNum ENDP
+
+main PROC
+    SFT_SIZ=8
+
+    mov eax, [bignum + 4]
+    shrd [bignum + 8], eax, SFT_SIZ
+    mov eax, [bignum]
+    shrd [bignum + 4], eax, SFT_SIZ
+    shr [bignum], SFT_SIZ
+
+    call PrintNum
+
+    exit
+main ENDP
+end main
+```
